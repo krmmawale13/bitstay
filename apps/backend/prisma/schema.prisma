@@ -1,0 +1,990 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["clientExtensions"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// //////////////////// CORE / TENANT MANAGEMENT ///////////////////////
+model Tenant {
+  id               Int               @id @default(autoincrement())
+  name             String
+  code             String            @unique
+  gstin            String?           @db.VarChar(15)
+  address          String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  approvals        Approval[]
+  auditLogs        AuditLog[]
+  bars             Bar[]
+  bookings         Booking[]
+  customers        Customer[]
+  fileStorage      FileStorage[]
+  hotels           Hotel[]
+  inventoryItems   InventoryItem[]
+  invoices         Invoice[]
+  metadataVersions MetadataVersion[]
+  notifications    Notification[]
+  posOrders        PosOrder[]
+  posTables        PosTable[]
+  purchaseOrders   PurchaseOrder[]
+  roles            Role[]
+  rooms            Room[]
+  scheduledReports ScheduledReport[]
+  supplierInvoices SupplierInvoice[]
+  suppliers        Supplier[]
+  users            User[]
+
+  @@map("tbl_tenants")
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  tenantId  Int
+  name      String
+  email     String     @unique
+  password  String
+  role      RoleEnum
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  approvals Approval[]
+  auditLogs AuditLog[]
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId], map: "tbl_users_tenantId_fkey")
+  @@map("tbl_users")
+}
+
+model Role {
+  id              Int              @id @default(autoincrement())
+  tenantId        Int?
+  name            String
+  description     String?
+  createdAt       DateTime         @default(now())
+  rolePermissions RolePermission[]
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId], map: "tbl_roles_tenantId_fkey")
+  @@map("tbl_roles")
+}
+
+model Permission {
+  id              Int              @id @default(autoincrement())
+  name            String
+  description     String?
+  createdAt       DateTime         @default(now())
+  rolePermissions RolePermission[]
+
+  @@map("tbl_permissions")
+}
+
+model RolePermission {
+  id           Int        @id @default(autoincrement())
+  roleId       Int
+  permissionId Int
+  createdAt    DateTime   @default(now())
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
+
+  @@index([permissionId], map: "tbl_role_permissions_permissionId_fkey")
+  @@index([roleId], map: "tbl_role_permissions_roleId_fkey")
+  @@map("tbl_role_permissions")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  userId    Int?
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId], map: "tbl_audit_logs_tenantId_fkey")
+  @@index([userId], map: "tbl_audit_logs_userId_fkey")
+  @@map("tbl_audit_logs")
+}
+
+model Approval {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  module    String
+  recordId  Int
+  status    String
+  requestBy Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  requester User     @relation(fields: [requestBy], references: [id])
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([requestBy], map: "tbl_approvals_requestBy_fkey")
+  @@index([tenantId], map: "tbl_approvals_tenantId_fkey")
+  @@map("tbl_approvals")
+}
+
+/// //////////////////// METADATA (GLOBAL / SHARED) ///////////////////////
+model State {
+  id        Int               @id @default(autoincrement())
+  name      String
+  addresses CustomerAddress[]
+  districts District[]
+
+  @@map("tbl_states")
+}
+
+model District {
+  id        Int               @id @default(autoincrement())
+  stateId   Int
+  name      String
+  addresses CustomerAddress[]
+  state     State             @relation(fields: [stateId], references: [id])
+
+  @@index([stateId], map: "tbl_districts_stateId_fkey")
+  @@map("tbl_districts")
+}
+
+model IdType {
+  id            Int            @id @default(autoincrement())
+  name          String
+  bookingGuests BookingGuest[]
+  customers     Customer[]
+
+  @@map("tbl_id_types")
+}
+
+model TaxGroup {
+  id   Int     @id @default(autoincrement())
+  name String
+  rate Decimal @db.Decimal(5, 2)
+
+  @@map("tbl_tax_groups")
+}
+
+model HsnSacCode {
+  id              Int             @id @default(autoincrement())
+  code            String
+  desc            String?
+  hsnTaxSummaries HsnTaxSummary[]
+
+  @@map("tbl_hsn_sac_codes")
+}
+
+model RoomType {
+  id           Int            @id @default(autoincrement())
+  name         String
+  roomamenity  roomamenity[]
+  seasonalrate seasonalrate[]
+  rooms        Room[]
+
+  @@map("tbl_room_types")
+}
+
+model BookingSource {
+  id       Int       @id @default(autoincrement())
+  name     String
+  bookings Booking[]
+
+  @@map("tbl_booking_sources")
+}
+
+model PaymentMode {
+  id              Int              @id @default(autoincrement())
+  mode            String
+  bookingPayments BookingPayment[]
+
+  @@map("tbl_payment_modes")
+}
+
+model DocumentType {
+  id   Int    @id @default(autoincrement())
+  name String
+
+  @@map("tbl_document_types")
+}
+
+model UnitType {
+  id             Int             @id @default(autoincrement())
+  name           String
+  inventoryItems InventoryItem[]
+
+  @@map("tbl_unit_types")
+}
+
+model LiquorCategory {
+  id     Int           @id @default(autoincrement())
+  name   String
+  brands LiquorBrand[]
+
+  @@map("tbl_liquor_categories")
+}
+
+model LiquorBrand {
+  id         Int            @id @default(autoincrement())
+  name       String
+  categoryId Int
+  createdAt  DateTime       @default(now())
+  category   LiquorCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([categoryId], map: "tbl_liquor_brands_categoryId_fkey")
+  @@map("tbl_liquor_brands")
+}
+
+model MenuCategory {
+  id    Int        @id @default(autoincrement())
+  name  String
+  items MenuItem[]
+
+  @@map("tbl_menu_categories")
+}
+
+/// //////////////////// CUSTOMERS & BOOKING ///////////////////////
+model Customer {
+  id          Int               @id @default(autoincrement())
+  tenantId    Int
+  name        String
+  phone       String?
+  email       String?           @unique
+  idTypeId    Int?
+  idNumber    String?
+  dob         DateTime?
+  gender      String?
+  nationality String?
+  consent     Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  bookings    Booking[]
+  addresses   CustomerAddress[]
+  idType      IdType?           @relation(fields: [idTypeId], references: [id])
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  invoices    Invoice[]
+
+  @@index([idTypeId], map: "tbl_customers_idTypeId_fkey")
+  @@index([tenantId], map: "tbl_customers_tenantId_fkey")
+  @@map("tbl_customers")
+}
+
+model CustomerAddress {
+  id         Int       @id @default(autoincrement())
+  customerId Int
+  line1      String
+  line2      String?
+  city       String?
+  stateId    Int?
+  districtId Int?
+  pincode    String?
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  district   District? @relation(fields: [districtId], references: [id])
+  state      State?    @relation(fields: [stateId], references: [id])
+
+  @@index([customerId], map: "tbl_customer_addresses_customerId_fkey")
+  @@index([districtId], map: "tbl_customer_addresses_districtId_fkey")
+  @@index([stateId], map: "tbl_customer_addresses_stateId_fkey")
+  @@map("tbl_customer_addresses")
+}
+
+model Booking {
+  id                    Int                     @id @default(autoincrement())
+  tenantId              Int
+  customerId            Int
+  sourceId              Int?
+  checkIn               DateTime
+  checkOut              DateTime
+  status                BookingStatus           @default(PENDING)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  bookingcharge         bookingcharge[]
+  guests                BookingGuest[]
+  payments              BookingPayment[]
+  rooms                 BookingRoom[]
+  customer              Customer                @relation(fields: [customerId], references: [id])
+  source                BookingSource?          @relation(fields: [sourceId], references: [id])
+  tenant                Tenant                  @relation(fields: [tenantId], references: [id])
+  roomAllocationHistory RoomAllocationHistory[]
+
+  @@index([customerId], map: "tbl_bookings_customerId_fkey")
+  @@index([sourceId], map: "tbl_bookings_sourceId_fkey")
+  @@index([tenantId], map: "tbl_bookings_tenantId_fkey")
+  @@map("tbl_bookings")
+}
+
+model BookingRoom {
+  id        Int     @id @default(autoincrement())
+  bookingId Int
+  roomId    Int
+  booking   Booking @relation(fields: [bookingId], references: [id])
+  room      Room    @relation(fields: [roomId], references: [id])
+
+  @@index([bookingId], map: "tbl_booking_rooms_bookingId_fkey")
+  @@index([roomId], map: "tbl_booking_rooms_roomId_fkey")
+  @@map("tbl_booking_rooms")
+}
+
+model BookingPayment {
+  id        Int          @id @default(autoincrement())
+  bookingId Int
+  amount    Decimal      @db.Decimal(10, 2)
+  modeId    Int?
+  createdAt DateTime     @default(now())
+  booking   Booking      @relation(fields: [bookingId], references: [id])
+  mode      PaymentMode? @relation(fields: [modeId], references: [id])
+
+  @@index([bookingId], map: "tbl_booking_payments_bookingId_fkey")
+  @@index([modeId], map: "tbl_booking_payments_modeId_fkey")
+  @@map("tbl_booking_payments")
+}
+
+model BookingGuest {
+  id        Int      @id @default(autoincrement())
+  bookingId Int
+  name      String
+  idTypeId  Int?
+  idNumber  String?
+  createdAt DateTime @default(now())
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  idType    IdType?  @relation(fields: [idTypeId], references: [id])
+
+  @@index([bookingId], map: "tbl_booking_guests_bookingId_fkey")
+  @@index([idTypeId], map: "tbl_booking_guests_idTypeId_fkey")
+  @@map("tbl_booking_guests")
+}
+
+model RoomAllocationHistory {
+  id        Int      @id @default(autoincrement())
+  bookingId Int
+  oldRoomId Int?
+  newRoomId Int?
+  changedAt DateTime @default(now())
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId], map: "tbl_room_allocation_history_bookingId_fkey")
+  @@map("tbl_room_allocation_history")
+}
+
+/// //////////////////// HOTEL / ROOMS ///////////////////////
+model Hotel {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  name      String
+  address   String?
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  rooms     Room[]
+
+  @@index([tenantId], map: "tbl_hotels_tenantId_fkey")
+  @@map("tbl_hotels")
+}
+
+model Room {
+  id          Int               @id @default(autoincrement())
+  tenantId    Int
+  hotelId     Int
+  number      String
+  typeId      Int?
+  status      String
+  rate        Decimal           @db.Decimal(10, 2)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  bookings    BookingRoom[]
+  posOrders   PosOrder[]
+  images      RoomImage[]
+  maintenance RoomMaintenance[]
+  hotel       Hotel             @relation(fields: [hotelId], references: [id])
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  type        RoomType?         @relation(fields: [typeId], references: [id])
+
+  @@index([hotelId], map: "tbl_rooms_hotelId_fkey")
+  @@index([tenantId], map: "tbl_rooms_tenantId_fkey")
+  @@index([typeId], map: "tbl_rooms_typeId_fkey")
+  @@map("tbl_rooms")
+}
+
+model RoomImage {
+  id        Int      @id @default(autoincrement())
+  roomId    Int
+  url       String
+  createdAt DateTime @default(now())
+  room      Room     @relation(fields: [roomId], references: [id])
+
+  @@index([roomId], map: "tbl_room_images_roomId_fkey")
+  @@map("tbl_room_images")
+}
+
+model RoomMaintenance {
+  id        Int      @id @default(autoincrement())
+  roomId    Int
+  note      String
+  createdAt DateTime @default(now())
+  room      Room     @relation(fields: [roomId], references: [id])
+
+  @@index([roomId], map: "tbl_room_maintenance_roomId_fkey")
+  @@map("tbl_room_maintenance")
+}
+
+/// //////////////////// BAR / POS ///////////////////////
+model Bar {
+  id        Int        @id @default(autoincrement())
+  tenantId  Int
+  name      String
+  location  String?
+  createdAt DateTime   @default(now())
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  orders    PosOrder[]
+  posTables PosTable[]
+
+  @@index([tenantId], map: "tbl_bars_tenantId_fkey")
+  @@map("tbl_bars")
+}
+
+model PosTable {
+  id       Int        @id @default(autoincrement())
+  tenantId Int
+  barId    Int?
+  name     String
+  orders   PosOrder[]
+  bar      Bar?       @relation(fields: [barId], references: [id])
+  tenant   Tenant     @relation(fields: [tenantId], references: [id])
+
+  @@index([barId], map: "tbl_pos_tables_barId_fkey")
+  @@index([tenantId], map: "tbl_pos_tables_tenantId_fkey")
+  @@map("tbl_pos_tables")
+}
+
+model PosOrder {
+  id            Int             @id @default(autoincrement())
+  tenantId      Int
+  barId         Int?
+  orderNumber   String          @unique
+  tableId       Int?
+  roomId        Int?
+  totalAmount   Decimal         @db.Decimal(10, 2)
+  paymentMode   PaymentModeEnum
+  createdAt     DateTime        @default(now())
+  posorderaddon posorderaddon?
+  kotTickets    KotTicket[]
+  items         PosOrderItem[]
+  bar           Bar?            @relation(fields: [barId], references: [id])
+  room          Room?           @relation(fields: [roomId], references: [id])
+  table         PosTable?       @relation(fields: [tableId], references: [id])
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+
+  @@index([barId], map: "tbl_pos_orders_barId_fkey")
+  @@index([roomId], map: "tbl_pos_orders_roomId_fkey")
+  @@index([tableId], map: "tbl_pos_orders_tableId_fkey")
+  @@index([tenantId], map: "tbl_pos_orders_tenantId_fkey")
+  @@map("tbl_pos_orders")
+}
+
+model PosOrderItem {
+  id         Int      @id @default(autoincrement())
+  orderId    Int
+  menuItemId Int
+  qty        Int
+  price      Decimal  @db.Decimal(10, 2)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  order      PosOrder @relation(fields: [orderId], references: [id])
+
+  @@index([menuItemId], map: "tbl_pos_order_items_menuItemId_fkey")
+  @@index([orderId], map: "tbl_pos_order_items_orderId_fkey")
+  @@map("tbl_pos_order_items")
+}
+
+model MenuItem {
+  id          Int                @id @default(autoincrement())
+  categoryId  Int
+  name        String
+  description String?
+  price       Decimal            @db.Decimal(10, 2)
+  createdAt   DateTime           @default(now())
+  metadata    MenuItemMetadata[]
+  category    MenuCategory       @relation(fields: [categoryId], references: [id])
+  posItems    PosOrderItem[]
+
+  @@index([categoryId], map: "tbl_menu_items_categoryId_fkey")
+  @@map("tbl_menu_items")
+}
+
+model MenuItemMetadata {
+  id         Int      @id @default(autoincrement())
+  menuItemId Int
+  key        String
+  value      String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@index([menuItemId], map: "tbl_menu_item_metadata_menuItemId_fkey")
+  @@map("tbl_menu_item_metadata")
+}
+
+model KotTicket {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  note      String?
+  createdAt DateTime @default(now())
+  order     PosOrder @relation(fields: [orderId], references: [id])
+
+  @@index([orderId], map: "tbl_kot_tickets_orderId_fkey")
+  @@map("tbl_kot_tickets")
+}
+
+/// //////////////////// SUPPLIERS & PURCHASE ///////////////////////
+model Supplier {
+  id               Int               @id @default(autoincrement())
+  tenantId         Int
+  name             String
+  gstNumber        String?
+  contact          String?
+  email            String?
+  address          String?
+  createdAt        DateTime          @default(now())
+  purchaseOrders   PurchaseOrder[]
+  supplierInvoices SupplierInvoice[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId], map: "tbl_suppliers_tenantId_fkey")
+  @@map("tbl_suppliers")
+}
+
+model PurchaseOrder {
+  id            Int                 @id @default(autoincrement())
+  tenantId      Int
+  supplierId    Int
+  orderDate     DateTime
+  status        String
+  totalAmount   Decimal             @db.Decimal(10, 2)
+  createdAt     DateTime            @default(now())
+  goodsReceipts GoodsReceipt[]
+  items         PurchaseOrderItem[]
+  supplier      Supplier            @relation(fields: [supplierId], references: [id])
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+
+  @@index([supplierId], map: "tbl_purchase_orders_supplierId_fkey")
+  @@index([tenantId], map: "tbl_purchase_orders_tenantId_fkey")
+  @@map("tbl_purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id        Int           @id @default(autoincrement())
+  poId      Int
+  itemId    Int
+  qty       Int
+  unitPrice Decimal       @db.Decimal(10, 2)
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+  po        PurchaseOrder @relation(fields: [poId], references: [id])
+
+  @@index([itemId], map: "tbl_purchase_order_items_itemId_fkey")
+  @@index([poId], map: "tbl_purchase_order_items_poId_fkey")
+  @@map("tbl_purchase_order_items")
+}
+
+model GoodsReceipt {
+  id        Int           @id @default(autoincrement())
+  poId      Int
+  note      String?
+  createdAt DateTime      @default(now())
+  po        PurchaseOrder @relation(fields: [poId], references: [id])
+
+  @@index([poId], map: "tbl_goods_receipts_poId_fkey")
+  @@map("tbl_goods_receipts")
+}
+
+model SupplierInvoice {
+  id          Int                   @id @default(autoincrement())
+  tenantId    Int
+  supplierId  Int
+  invoiceNo   String
+  invoiceDate DateTime
+  totalAmount Decimal               @db.Decimal(12, 2)
+  createdAt   DateTime              @default(now())
+  gstEntries  GstPurchaseRegister[]
+  supplier    Supplier              @relation(fields: [supplierId], references: [id])
+  tenant      Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@index([supplierId], map: "tbl_supplier_invoices_supplierId_fkey")
+  @@index([tenantId], map: "tbl_supplier_invoices_tenantId_fkey")
+  @@map("tbl_supplier_invoices")
+}
+
+/// //////////////////// INVENTORY / STOCK ///////////////////////
+model InventoryItem {
+  id            Int                 @id @default(autoincrement())
+  tenantId      Int
+  name          String
+  sku           String?
+  unitTypeId    Int?
+  createdAt     DateTime            @default(now())
+  bottlings     BottlingRecord[]
+  batches       InventoryBatch[]
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  unitType      UnitType?           @relation(fields: [unitTypeId], references: [id])
+  invoiceItems  InvoiceItem[]
+  purchaseItems PurchaseOrderItem[]
+  adjustments   StockAdjustment[]
+  stockMoves    StockRegister[]
+
+  @@index([tenantId], map: "tbl_inventory_items_tenantId_fkey")
+  @@index([unitTypeId], map: "tbl_inventory_items_unitTypeId_fkey")
+  @@map("tbl_inventory_items")
+}
+
+model InventoryBatch {
+  id        Int           @id @default(autoincrement())
+  itemId    Int
+  batchCode String?
+  expiry    DateTime?
+  mrp       Decimal       @db.Decimal(10, 2)
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([itemId], map: "tbl_inventory_batches_itemId_fkey")
+  @@map("tbl_inventory_batches")
+}
+
+model StockRegister {
+  id        Int           @id @default(autoincrement())
+  itemId    Int
+  qty       Int
+  note      String?
+  createdAt DateTime      @default(now())
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([itemId], map: "tbl_stock_register_itemId_fkey")
+  @@map("tbl_stock_register")
+}
+
+model StockAdjustment {
+  id        Int           @id @default(autoincrement())
+  itemId    Int
+  type      String
+  qty       Int
+  note      String?
+  createdAt DateTime      @default(now())
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([itemId], map: "tbl_stock_adjustments_itemId_fkey")
+  @@map("tbl_stock_adjustments")
+}
+
+model BottlingRecord {
+  id        Int            @id @default(autoincrement())
+  itemId    Int?
+  note      String?
+  createdAt DateTime       @default(now())
+  item      InventoryItem? @relation(fields: [itemId], references: [id])
+
+  @@index([itemId], map: "tbl_bottling_records_itemId_fkey")
+  @@map("tbl_bottling_records")
+}
+
+/// //////////////////// SALES & BILLING ///////////////////////
+model Invoice {
+  id          Int                @id @default(autoincrement())
+  tenantId    Int
+  customerId  Int?
+  invoiceNo   String             @unique
+  status      InvoiceStatus      @default(DRAFT)
+  totalAmount Decimal            @db.Decimal(12, 2)
+  taxAmount   Decimal            @db.Decimal(12, 2)
+  paymentMode PaymentModeEnum
+  createdAt   DateTime           @default(now())
+  creditNotes CreditNote[]
+  gstSales    GstSalesRegister[]
+  items       InvoiceItem[]
+  customer    Customer?          @relation(fields: [customerId], references: [id])
+  tenant      Tenant             @relation(fields: [tenantId], references: [id])
+  payments    Payment[]
+
+  @@index([customerId], map: "tbl_invoices_customerId_fkey")
+  @@index([tenantId], map: "tbl_invoices_tenantId_fkey")
+  @@map("tbl_invoices")
+}
+
+model InvoiceItem {
+  id        Int           @id @default(autoincrement())
+  invoiceId Int
+  itemId    Int
+  qty       Int
+  price     Decimal       @db.Decimal(10, 2)
+  taxRate   Decimal?      @db.Decimal(5, 2)
+  invoice   Invoice       @relation(fields: [invoiceId], references: [id])
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@index([invoiceId], map: "tbl_invoice_items_invoiceId_fkey")
+  @@index([itemId], map: "tbl_invoice_items_itemId_fkey")
+  @@map("tbl_invoice_items")
+}
+
+model Payment {
+  id        Int             @id @default(autoincrement())
+  invoiceId Int
+  amount    Decimal         @db.Decimal(12, 2)
+  mode      PaymentModeEnum
+  createdAt DateTime        @default(now())
+  invoice   Invoice         @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId], map: "tbl_payments_invoiceId_fkey")
+  @@map("tbl_payments")
+}
+
+model CreditNote {
+  id        Int      @id @default(autoincrement())
+  invoiceId Int
+  amount    Decimal  @db.Decimal(12, 2)
+  reason    String?
+  createdAt DateTime @default(now())
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId], map: "tbl_credit_notes_invoiceId_fkey")
+  @@map("tbl_credit_notes")
+}
+
+/// //////////////////// COMPLIANCE & REPORTS ///////////////////////
+model GstPurchaseRegister {
+  id                Int             @id @default(autoincrement())
+  supplierInvoiceId Int
+  invoiceNo         String
+  gstTaxable        Decimal         @db.Decimal(12, 2)
+  gstAmount         Decimal         @db.Decimal(12, 2)
+  createdAt         DateTime        @default(now())
+  supplierInvoice   SupplierInvoice @relation(fields: [supplierInvoiceId], references: [id])
+
+  @@index([supplierInvoiceId], map: "tbl_gst_purchase_register_supplierInvoiceId_fkey")
+  @@map("tbl_gst_purchase_register")
+}
+
+model GstSalesRegister {
+  id         Int      @id @default(autoincrement())
+  invoiceId  Int
+  invoiceNo  String
+  gstTaxable Decimal  @db.Decimal(12, 2)
+  gstAmount  Decimal  @db.Decimal(12, 2)
+  createdAt  DateTime @default(now())
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId], map: "tbl_gst_sales_register_invoiceId_fkey")
+  @@map("tbl_gst_sales_register")
+}
+
+model HsnTaxSummary {
+  id      Int        @id @default(autoincrement())
+  hsnId   Int
+  taxable Decimal    @db.Decimal(12, 2)
+  tax     Decimal    @db.Decimal(12, 2)
+  hsn     HsnSacCode @relation(fields: [hsnId], references: [id])
+
+  @@index([hsnId], map: "tbl_hsn_tax_summary_hsnId_fkey")
+  @@map("tbl_hsn_tax_summary")
+}
+
+model Gstr1Export {
+  id        Int      @id @default(autoincrement())
+  data      String?
+  createdAt DateTime @default(now())
+
+  @@map("tbl_gstr1_export")
+}
+
+model Gstr2Export {
+  id        Int      @id @default(autoincrement())
+  data      String?
+  createdAt DateTime @default(now())
+
+  @@map("tbl_gstr2_export")
+}
+
+model ExciseDailyStock {
+  id        Int      @id @default(autoincrement())
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@map("tbl_excise_daily_stock")
+}
+
+model ExciseBrandReport {
+  id        Int      @id @default(autoincrement())
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@map("tbl_excise_brand_report")
+}
+
+model ExciseBreakageReport {
+  id        Int      @id @default(autoincrement())
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@map("tbl_excise_breakage_report")
+}
+
+model ExciseTransportPass {
+  id        Int      @id @default(autoincrement())
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@map("tbl_excise_transport_pass")
+}
+
+/// //////////////////// SUPPORT / UTILITIES ///////////////////////
+model Notification {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId], map: "tbl_notifications_tenantId_fkey")
+  @@map("tbl_notifications")
+}
+
+model ScheduledReport {
+  id        Int       @id @default(autoincrement())
+  tenantId  Int
+  name      String
+  cron      String
+  lastRunAt DateTime?
+  createdAt DateTime  @default(now())
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId], map: "tbl_scheduled_reports_tenantId_fkey")
+  @@map("tbl_scheduled_reports")
+}
+
+model MetadataVersion {
+  id        Int        @id @default(autoincrement())
+  tenantId  Int
+  version   String
+  notes     String?
+  createdAt DateTime   @default(now())
+  metadata  Metadata[]
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId], map: "tbl_metadata_versions_tenantId_fkey")
+  @@map("tbl_metadata_versions")
+}
+
+model Metadata {
+  id        Int             @id @default(autoincrement())
+  versionId Int
+  type      String
+  key       String
+  value     String
+  createdAt DateTime        @default(now())
+  version   MetadataVersion @relation(fields: [versionId], references: [id])
+
+  @@index([versionId], map: "tbl_metadata_versionId_fkey")
+  @@map("tbl_metadata")
+}
+
+model FileStorage {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  key       String
+  url       String
+  mimeType  String?
+  size      Int?
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId], map: "tbl_file_storage_tenantId_fkey")
+  @@map("tbl_file_storage")
+}
+
+model amenity {
+  id          Int           @id @default(autoincrement())
+  name        String        @unique(map: "Amenity_name_key")
+  icon        String?
+  roomamenity roomamenity[]
+}
+
+model bookingcharge {
+  id           Int     @id @default(autoincrement())
+  bookingId    Int
+  description  String
+  amount       Decimal @db.Decimal(10, 2)
+  taxAmount    Decimal @default(0.00) @db.Decimal(10, 2)
+  tbl_bookings Booking @relation(fields: [bookingId], references: [id], map: "BookingCharge_bookingId_fkey")
+
+  @@unique([bookingId, description], map: "BookingCharge_bookingId_description_key")
+}
+
+model license {
+  id                  Int                   @id @default(autoincrement())
+  name                String                @unique(map: "License_name_key")
+  expiryDate          DateTime
+  licenserenewalalert licenserenewalalert[]
+}
+
+model licenserenewalalert {
+  id               Int     @id @default(autoincrement())
+  licenseId        Int
+  renewalAlertDays Int     @default(30)
+  license          license @relation(fields: [licenseId], references: [id], map: "LicenseRenewalAlert_licenseId_fkey")
+
+  @@unique([licenseId, renewalAlertDays], map: "LicenseRenewalAlert_licenseId_renewalAlertDays_key")
+}
+
+model posorderaddon {
+  id               Int      @id @default(autoincrement())
+  posOrderId       Int      @unique(map: "PosOrderAddon_posOrderId_key")
+  serviceChargePct Decimal  @default(0.00) @db.Decimal(5, 2)
+  orderType        String
+  tbl_pos_orders   PosOrder @relation(fields: [posOrderId], references: [id], map: "PosOrderAddon_posOrderId_fkey")
+}
+
+model roomamenity {
+  id             Int      @id @default(autoincrement())
+  roomTypeId     Int
+  amenityId      Int
+  amenity        amenity  @relation(fields: [amenityId], references: [id], map: "RoomAmenity_amenityId_fkey")
+  tbl_room_types RoomType @relation(fields: [roomTypeId], references: [id], map: "RoomAmenity_roomTypeId_fkey")
+
+  @@unique([roomTypeId, amenityId], map: "RoomAmenity_roomTypeId_amenityId_key")
+  @@index([amenityId], map: "RoomAmenity_amenityId_fkey")
+}
+
+model seasonalrate {
+  id             Int      @id @default(autoincrement())
+  roomTypeId     Int
+  startDate      DateTime
+  endDate        DateTime
+  rate           Decimal  @db.Decimal(10, 2)
+  tbl_room_types RoomType @relation(fields: [roomTypeId], references: [id], map: "SeasonalRate_roomTypeId_fkey")
+
+  @@unique([roomTypeId, startDate, endDate], map: "SeasonalRate_roomTypeId_startDate_endDate_key")
+}
+
+/// //////////////////// ENUMS ///////////////////////
+enum RoleEnum {
+  ADMIN
+  MANAGER
+  RECEPTIONIST
+  CASHIER
+  WAITER
+  HOUSEKEEPING
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+enum PaymentModeEnum {
+  CASH
+  CARD
+  UPI
+  NETBANKING
+  OTHER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PAID
+  PARTIAL
+  CANCELLED
+}

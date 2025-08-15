@@ -1,0 +1,13 @@
+/* src/styles/globals.css */
+
+@import "tailwindcss";
+
+html, body {
+  padding: 0;
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}

@@ -1,0 +1,13 @@
+@layer base {
+  :root {
+    --color-primary: #1E90A1; /* soft teal */
+    --color-secondary: #F5F5F5; /* warm gray */
+    --color-accent: #F9B24E; /* gold/coral */
+  }
+}
+
+body {
+  background-color: var(--color-secondary);
+  color: #111;
+  font-family: 'Inter', sans-serif;
+}

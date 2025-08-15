@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light dark; }
+
+html, body, #__next { height: 100%; }
+body { @apply bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100; }
+
+/* Nice scrollbar */
+* { scrollbar-width: thin; scrollbar-color: theme('colors.slate.400') transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: rgba(100,116,139,.45); border-radius: 8px; }

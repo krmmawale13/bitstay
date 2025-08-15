@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+/* Optional custom styles */
+html, body {
+  padding: 0;
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
