@@ -1,27 +1,13 @@
-import { useEffect, useState } from "react";
-import { getCurrentUser } from "@/lib/auth";
+// pages/index.tsx
+import { useEffect } from "react";
+import { useRouter } from "next/router";
 
-export default function HomePage() {
-  const [user, setUser] = useState<{ name: string; role: string } | null>(null);
+export default function IndexRedirect() {
+  const router = useRouter();
 
   useEffect(() => {
-    async function fetchUser() {
-      const data = await getCurrentUser();
-      setUser(data);
-    }
-    fetchUser();
-  }, []);
+    router.push("/loginpage");
+  }, [router]);
 
-  return (
-    <main className="p-6">
-      <h1 className="text-2xl font-bold">Welcome to BitStay</h1>
-      {user ? (
-        <p className="mt-2">
-          Logged in as <strong>{user.name}</strong> ({user.role})
-        </p>
-      ) : (
-        <p className="mt-2">Loading user info...</p>
-      )}
-    </main>
-  );
+  return null;
 }
