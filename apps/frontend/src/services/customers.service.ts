@@ -190,3 +190,34 @@ export async function getDistricts(stateId?: number) {
     handleApiError(error);
   }
 }
+/* ------------------ SEARCH + QUICK ADD (for pickers) ------------------ */
+
+/** Search customers by name/phone/email. Backend should accept ?query=&take=. */
+export async function searchCustomers(
+  query: string,
+  take = 10
+): Promise<Customer[]> {
+  try {
+    const res = await http.get<Customer[]>(CUSTOMERS_URL, {
+      params: { query, take },
+    });
+    return Array.isArray(res.data) ? res.data : [];
+  } catch (error) {
+    handleApiError(error);
+  }
+}
+
+/** Minimal create helper used by CustomerPicker's "Quick add". */
+export async function quickCreateCustomer(payload: {
+  name: string;
+  phone?: string;
+}): Promise<Customer> {
+  // if you later add a dedicated /customers/quick endpoint,
+  // just swap this to http.post(`${CUSTOMERS_URL}/quick`, payload)
+  return createCustomer({
+    name: payload.name,
+    phone: payload.phone ?? null,
+    consent: false,
+    addresses: [],
+  });
+}

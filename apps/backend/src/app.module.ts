@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -9,34 +8,33 @@ import { UsersModule } from './modules/users/users.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { SettingsModule } from './modules/settings/settings.module';
-import { AuthGuard } from './common/guards/auth.guard';
+import { BookingsModule } from './modules/bookings/bookings.module';
+import { HotelsModule } from './modules/property/hotels/hotels.module';
+import { RoomsModule } from './modules/property/rooms/rooms.module';
 import { APP_GUARD } from '@nestjs/core';
+import { AuthGuard } from './common/guards/auth.guard';
+
+const FEATURE_MODULES = [
+  AuthModule,      // 👈 contains global JwtModule
+  UsersModule,
+  DashboardModule,
+  CustomersModule,
+  SettingsModule,
+  BookingsModule,
+  HotelsModule,
+  RoomsModule,
+];
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '1d' },
-      }),
-    }),
     PrismaModule,
-    AuthModule,
-    UsersModule,
-    DashboardModule,
-    CustomersModule,
-    SettingsModule,
+    ...FEATURE_MODULES,
   ],
   controllers: [AppController],
   providers: [
     AppService,
-    {
-      provide: APP_GUARD,
-      useClass: AuthGuard,
-    },
+    { provide: APP_GUARD, useClass: AuthGuard }, // keep your global guard if you already had it
   ],
 })
 export class AppModule {}

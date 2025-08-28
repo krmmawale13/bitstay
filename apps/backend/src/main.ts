@@ -1,31 +1,46 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Allow frontend requests
+  const configService = app.get(ConfigService);
+
+  // ---------------------------
+  // Global Prefix
+  // ---------------------------
+  const globalPrefix = configService.get<string>('API_PREFIX') || 'api/v1';
+  app.setGlobalPrefix(globalPrefix);
+
+  // ---------------------------
+  // CORS (allow FE requests)
+  // ---------------------------
+  const frontendUrl = configService.get<string>('FRONTEND_URL') || '*';
   app.enableCors({
-    origin: process.env.FRONTEND_URL || '*',
+    origin: frontendUrl,
     credentials: true,
   });
 
-  // API base path
-  app.setGlobalPrefix('api/v1');
-
-  // Global validation
+  // ---------------------------
+  // Global Validation
+  // ---------------------------
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,       // Strip unknown properties
-      forbidNonWhitelisted: true, // Throw error on unknown props
-      transform: true,       // Transform payloads to DTOs
+      whitelist: true,             // strip unknown fields
+      forbidNonWhitelisted: true,  // throw if extra fields
+      transform: true,             // auto-transform payloads to DTOs
     }),
   );
 
-  const port = process.env.PORT ?? 3000;
+  // ---------------------------
+  // Server start
+  // ---------------------------
+  const port = configService.get<number>('PORT') || 3000;
   await app.listen(port);
-  console.log(`🚀 BitStay backend is running on port ${port}`);
+
+  console.log(`🚀 BitStay backend is running at http://localhost:${port}/${globalPrefix}`);
 }
 
 bootstrap();

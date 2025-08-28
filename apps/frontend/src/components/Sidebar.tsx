@@ -1,24 +1,41 @@
+// apps/frontend/src/components/Sidebar.tsx
 import Link from "next/link";
 import { useRouter } from "next/router";
 import clsx from "clsx";
 import {
   LayoutDashboard,
   Users,
-  Calendar,
+  CalendarCheck2,
   BedDouble,
+  Building2,
   Wine,
   Boxes,
   BarChart2,
-  Settings,
+  Settings as SettingsIcon,
   ChevronLeft,
   ChevronRight,
+  ShieldCheck,
+  ShoppingCart,
+  Truck,
+  FileText,
+  UtensilsCrossed,
+  ReceiptText,
+  ScrollText,
+  FolderOpen,
+  Bell,
+  Stamp,
+  Database,
   LockKeyhole,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Tooltip } from "react-tooltip";
 import "react-tooltip/dist/react-tooltip.css";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { MENU, type MenuItem } from "@/config/menu.config";
+import { canAny, type PermissionKey } from "@/lib/acl";
+
+/* --------------------------------- Props -------------------------------- */
 interface SidebarProps {
   isOpen: boolean;
   toggle: () => void;
@@ -35,8 +52,10 @@ function readJSON<T>(key: string, fallback: T): T {
     return fallback;
   }
 }
-function useLS<T>(key: string, fallback: T): T {
+
+function useLocalStorageWatch<T>(key: string, fallback: T): T {
   const [val, setVal] = useState<T>(() => readJSON<T>(key, fallback));
+
   useEffect(() => {
     const refresh = () => setVal(readJSON<T>(key, fallback));
 
@@ -46,57 +65,118 @@ function useLS<T>(key: string, fallback: T): T {
     };
     window.addEventListener("storage", onStorage);
 
-    // Same-tab updates: listen to a custom event our app dispatches after perm changes
+    // Same-tab custom events you already emit after login/perm updates
     const onPermsUpdated = () => refresh();
+    const onMetadataUpdated = () => refresh();
     window.addEventListener("permissions:updated", onPermsUpdated as any);
-
-    // Soft polling as a safety net (rare edge cases)
-    const id = setInterval(refresh, 500);
+    window.addEventListener("metadata:updated", onMetadataUpdated as any);
 
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("permissions:updated", onPermsUpdated as any);
-      clearInterval(id);
+      window.removeEventListener("metadata:updated", onMetadataUpdated as any);
     };
   }, [key, fallback]);
+
   return val;
 }
+
+/* --------------------------------- Icons -------------------------------- */
+const ICON_MAP: Record<string, React.ComponentType<any>> = {
+  LayoutDashboard,
+  Users,
+  CalendarCheck2,
+  BedDouble,
+  Building2,
+  Wine,
+  Boxes,
+  BarChart2,
+  ShieldCheck,
+  ShoppingCart,
+  Truck,
+  FileText,
+  UtensilsCrossed,
+  ReceiptText,
+  ScrollText,
+  FolderOpen,
+  Bell,
+  Stamp,
+  Database,
+  // Aliases (fallbacks)
+  Settings: SettingsIcon,
+};
+
+/* ------------------------------ RBAC helpers ---------------------------- */
 function isAdminRole(role: string | null): boolean {
   if (!role) return false;
   return String(role).toUpperCase() === "ADMIN";
 }
-function canAny(perms: Set<string>, required?: string[]) {
-  if (!required || required.length === 0) return true;
-  for (const k of required) if (perms.has(k)) return true;
-  return false;
+
+/* ------------------------------ Active utils ---------------------------- */
+function isPathActive(current: string, href?: string): boolean {
+  if (!href) return false;
+  if (current === href) return true;
+  return current.startsWith(href + "/");
 }
 
-/* ------------------------------ Nav schema ------------------------------ */
-/* ANY semantics for required: if user has ANY of the keys, show/enable. */
-type NavItem = { name: string; path: string; icon: any; required?: string[] };
-
-const NAV_ITEMS: NavItem[] = [
-  { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard, required: ["dashboard.view"] },
-  { name: "Customers", path: "/customers", icon: Users, required: ["customers.read", "customers.write"] },
-  { name: "Bookings", path: "/bookings", icon: Calendar, required: ["bookings.read"] },
-  { name: "Rooms", path: "/rooms", icon: BedDouble, required: ["hotels.read"] },
-  // choose per RBAC (either pos.use or bars.read will allow)
-  { name: "Bar / POS", path: "/bar", icon: Wine, required: ["pos.use", "bars.read"] },
-  { name: "Inventory", path: "/inventory", icon: Boxes, required: ["inventory.read"] },
-  { name: "Reports", path: "/reports", icon: BarChart2, required: ["reports.view"] },
-  // strict key (matches backend)
-  { name: "Access Control", path: "/settings/access", icon: Settings, required: ["settings.access.manage"] },
-];
-
+/* ---------------------------- Sidebar Component ------------------------- */
 export default function Sidebar({ isOpen, toggle }: SidebarProps) {
   const router = useRouter();
-  const role = useLS<any>("currentUser", null)?.role ?? null;
-  const permsArr = useLS<string[]>("permissions", []);
-  const perms = new Set(permsArr || []);
+
+  // Current user & perms from localStorage (kept in sync via events/storage)
+  const currentUser = useLocalStorageWatch<any>("currentUser", null);
+  const role: string | null = currentUser?.role ?? null;
   const isAdmin = isAdminRole(role);
 
-  // For non-admins, show ONLY allowed items (cleaner UX).
-  const visible = isAdmin ? NAV_ITEMS : NAV_ITEMS.filter((it) => canAny(perms, it.required));
+  const permsArr = useLocalStorageWatch<PermissionKey[]>("permissions", []);
+  const perms = useMemo(() => new Set(permsArr || []), [permsArr]);
+
+  // Collapsible buckets: persist which groups are open
+  const [openGroups, setOpenGroups] = useState<string[]>(() =>
+    readJSON<string[]>("sidebar:openGroups", ["Front Desk"]) // default open
+  );
+
+  // Keep a bucket open when any child matches current route
+  useEffect(() => {
+    const mustBeOpen: string[] = [];
+    MENU.forEach((bucket) => {
+      if (!bucket.children || bucket.children.length === 0) return;
+      const anyActive = bucket.children.some((c) => isPathActive(router.asPath, c.href));
+      if (anyActive && !mustBeOpen.includes(bucket.label)) mustBeOpen.push(bucket.label);
+    });
+    if (mustBeOpen.length > 0) {
+      setOpenGroups((prev) => {
+        const next = Array.from(new Set([...prev, ...mustBeOpen]));
+        if (typeof window !== "undefined") {
+          localStorage.setItem("sidebar:openGroups", JSON.stringify(next));
+        }
+        return next;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.asPath]);
+
+  const toggleGroup = useCallback((label: string) => {
+    setOpenGroups((prev) => {
+      const isOpenNow = prev.includes(label);
+      const next = isOpenNow ? prev.filter((l) => l !== label) : [...prev, label];
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sidebar:openGroups", JSON.stringify(next));
+      }
+      return next;
+    });
+  }, []);
+
+  // RBAC filter for non-admin users (ANY semantics)
+  const gatedMenu = useMemo(() => {
+    if (isAdmin) return MENU;
+    return MENU.map((bucket) => {
+      const children = (bucket.children || []).filter((child) =>
+        canAny(perms, child.required)
+      );
+      return { ...bucket, children };
+    }).filter((b) => (b.children || []).length > 0);
+  }, [isAdmin, perms]);
 
   return (
     <>
@@ -114,18 +194,16 @@ export default function Sidebar({ isOpen, toggle }: SidebarProps) {
         animate={{ width: isOpen ? 256 : 80 }}
         transition={{ duration: 0.22 }}
         className={clsx(
-          // Mobile: fixed (with overlay). Desktop: sticky so it “adjusts” with page length.
           "fixed md:sticky top-0 md:top-0 z-40 md:z-auto h-screen md:h-screen",
-          // Allow the sidebar itself to scroll vertically when content is tall
           "overflow-y-auto",
-          // Visuals
           "md:min-h-0 flex flex-col text-white",
           "bg-gradient-to-b from-sky-500 via-indigo-500 to-fuchsia-500 dark:from-gray-900 dark:to-gray-800",
-          "shadow-lg",
+          "shadow-lg relative",
           "before:content-[''] before:absolute before:inset-0 before:pointer-events-none",
           "before:bg-[linear-gradient(180deg,rgba(255,255,255,0.18)_0%,rgba(255,255,255,0.05)_30%,rgba(255,255,255,0)_60%)]",
           "before:opacity-60 before:mix-blend-soft-light"
         )}
+        aria-label="Main sidebar"
       >
         {/* Header / Brand */}
         <div className="flex items-center justify-between gap-3 p-4 border-b border-white/20">
@@ -137,8 +215,7 @@ export default function Sidebar({ isOpen, toggle }: SidebarProps) {
           </div>
           <button
             onClick={toggle}
-            className="hidden md:inline-flex h-8 w-8 items-center justify-center rounded-lg
-                       bg-white/10 hover:bg-white/20 border border-white/20 transition"
+            className="hidden md:inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 transition"
             aria-label={isOpen ? "Collapse sidebar" : "Expand sidebar"}
           >
             {isOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
@@ -146,99 +223,112 @@ export default function Sidebar({ isOpen, toggle }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="mt-4 flex-1 px-2">
-          <ul className="space-y-1">
-            {visible.map((item) => {
-              const isActive =
-                router.pathname === item.path ||
-                router.pathname.startsWith(item.path + "/");
-              const Icon = item.icon;
+        <nav className="mt-3 flex-1 px-2">
+          <ul className="space-y-2">
+            {gatedMenu.map((bucket) => {
+              const BucketIcon = bucket.icon ? ICON_MAP[bucket.icon] : undefined;
+              const isGroupOpen = openGroups.includes(bucket.label);
+              const children = bucket.children || [];
 
               return (
-                <li key={item.path}>
-                  <Link
-                    href={item.path}
-                    data-tooltip-id={`tip-${item.name}`}
+                <li key={bucket.label} className="select-none">
+                  {/* Bucket header */}
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(bucket.label)}
                     className={clsx(
-                      "group flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
-                      isActive
-                        ? "bg-white/25 backdrop-blur-sm shadow-sm scale-[1.02] border border-white/30"
-                        : "hover:bg-white/10 border border-transparent"
+                      "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
+                      "bg-white/5 hover:bg-white/10 border border-white/10",
+                      isOpen ? "justify-start" : "justify-center"
+                    )}
+                    aria-expanded={isGroupOpen}
+                    aria-controls={`group-${bucket.label}`}
+                  >
+                    {BucketIcon ? <BucketIcon className="w-5 h-5" /> : <ShoppingCart className="w-5 h-5" />}
+                    {isOpen && (
+                      <span className="truncate font-semibold tracking-wide">{bucket.label}</span>
+                    )}
+                    {isOpen && (
+                      <span className={clsx("ml-auto transition-transform", isGroupOpen ? "rotate-0" : "-rotate-90")}>
+                        <ChevronLeft size={16} />
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Children */}
+                  <ul
+                    id={`group-${bucket.label}`}
+                    className={clsx(
+                      "mt-1 pl-0 space-y-1",
+                      isGroupOpen ? "block" : isOpen ? "hidden" : "hidden"
                     )}
                   >
-                    <Icon className="w-5 h-5 flex-shrink-0" />
-                    {isOpen && <span className="truncate">{item.name}</span>}
-                  </Link>
+                    {children.map((item) => {
+                      const Icon = item.icon ? ICON_MAP[item.icon] : undefined;
+                      const active = isPathActive(router.asPath, item.href);
 
-                  {!isOpen && (
-                    <Tooltip
-                      id={`tip-${item.name}`}
-                      place="right"
-                      style={{
-                        backgroundColor: "#0f172a",
-                        color: "white",
-                        padding: "4px 8px",
-                        borderRadius: "6px",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      {item.name}
-                    </Tooltip>
-                  )}
+                      // Compact tooltip id
+                      const tipId = `tip-${bucket.label}-${item.label}`;
+
+                      return (
+                        <li key={bucket.label + "-" + item.label}>
+                          <Link
+                            href={item.href || "#"}
+                            data-tooltip-id={!isOpen ? tipId : undefined}
+                            aria-current={active ? "page" : undefined}
+                            className={clsx(
+                              "group flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
+                              active
+                                ? "bg-white/25 backdrop-blur-sm shadow-sm scale-[1.02] border border-white/30"
+                                : "hover:bg-white/10 border border-transparent",
+                              isOpen ? "justify-start" : "justify-center"
+                            )}
+                          >
+                            {Icon ? <Icon className="w-5 h-5 flex-shrink-0" /> : <FolderOpen className="w-5 h-5" />}
+                            {isOpen && <span className="truncate">{item.label}</span>}
+                          </Link>
+
+                          {/* Compact tooltip */}
+                          {!isOpen && (
+                            <Tooltip
+                              id={tipId}
+                              place="right"
+                              style={{
+                                backgroundColor: "#0f172a",
+                                color: "white",
+                                padding: "4px 8px",
+                                borderRadius: "6px",
+                                fontSize: "0.875rem",
+                              }}
+                            >
+                              {item.label}
+                            </Tooltip>
+                          )}
+                        </li>
+                      );
+                    })}
+
+                    {/* If a group becomes empty for non-admin, show a subtle hint (optional) */}
+                    {!isAdmin && children.length === 0 && (
+                      <li className="px-3 py-2 text-xs opacity-80 flex items-center gap-2">
+                        <LockKeyhole className="w-4 h-4" />
+                        {isOpen && <span>No access in this bucket</span>}
+                      </li>
+                    )}
+                  </ul>
                 </li>
               );
             })}
-
-            {/* Optional: show locked items (disabled) for clarity (ADMIN sees all anyway) */}
-            {!isAdmin &&
-              NAV_ITEMS.filter((it) => !canAny(perms, it.required)).map((item) => {
-                const Icon = item.icon;
-                return (
-                  <li key={item.path + "-locked"}>
-                    <div
-                      aria-disabled
-                      data-tooltip-id={`tip-${item.name}-locked`}
-                      className={clsx(
-                        "group flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200",
-                        "opacity-60 cursor-not-allowed border border-transparent"
-                      )}
-                    >
-                      <LockKeyhole className="w-5 h-5 flex-shrink-0" />
-                      {isOpen && <span className="truncate">{item.name}</span>}
-                    </div>
-                    {!isOpen && (
-                      <Tooltip
-                        id={`tip-${item.name}-locked`}
-                        place="right"
-                        style={{
-                          backgroundColor: "#0f172a",
-                          color: "white",
-                          padding: "4px 8px",
-                          borderRadius: "6px",
-                          fontSize: "0.875rem",
-                        }}
-                      >
-                        {item.name} (no access)
-                      </Tooltip>
-                    )}
-                  </li>
-                );
-              })}
-
-            {/* Empty state when nothing is visible for the user */}
-            {!isAdmin && visible.length === 0 && (
-              <li className="px-3 py-2 text-xs opacity-80">
-                No modules available for your access level.
-              </li>
-            )}
           </ul>
         </nav>
 
-        {/* Footer actions — keep this Settings button as you prefer */}
+        {/* Footer actions */}
         <div className="p-3 border-t border-white/20">
-          <button className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg
-                             bg-white/15 hover:bg-white/25 border border-white/20 text-white transition">
-            <Settings className="w-4 h-4" />
+          <button
+            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg
+                       bg-white/15 hover:bg-white/25 border border-white/20 text-white transition"
+          >
+            <SettingsIcon className="w-4 h-4" />
             {isOpen && <span>Settings</span>}
           </button>
         </div>

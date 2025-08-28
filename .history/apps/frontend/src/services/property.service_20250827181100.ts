@@ -1,0 +1,173 @@
+import http from "@/lib/http";
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001/api/v1";
+
+/* -------------------- Types -------------------- */
+export type HotelDTO = {
+  id: number;
+  name: string;
+  address?: string | null;
+  createdAt: string;
+};
+
+export type CreateHotelInput = { name: string; address?: string };
+export type UpdateHotelInput = { name?: string; address?: string };
+
+export type RoomStatus = "CLEAN" | "DIRTY" | "INSPECT" | "OOO";
+
+export type AmenityDTO = { id: number; name: string; icon?: string | null };
+
+export type RoomImageDTO = {
+  id: number;
+  url: string;
+  createdAt: string;
+};
+
+export type RoomDTO = {
+  id: number;
+  hotelId: number;
+  number: string;
+  typeId?: number | null;
+  status: RoomStatus;
+  rate: string;
+  createdAt: string;
+  updatedAt: string;
+  hotel?: { id: number; name: string } | null;
+  type?: { id: number; name: string } | null;
+  images?: RoomImageDTO[];
+  amenities?: AmenityDTO[]; // derived when fetching single room
+};
+
+export type CreateRoomInput = {
+  hotelId: number;
+  number: string;
+  typeId?: number;
+  rate: string;
+  status?: RoomStatus;
+};
+
+export type UpdateRoomInput = Partial<CreateRoomInput>;
+
+export type RoomsMeta = {
+  hotels: { id: number; name: string }[];
+  roomTypes: { id: number; name: string }[];
+  amenities: AmenityDTO[]; // master list for modal
+  statuses: RoomStatus[];
+};
+
+export type HotelsSummary = {
+  totals: {
+    hotels: number;
+    rooms: number;
+    activeHotels: number;
+    avgRoomsPerHotel: number;
+  };
+  roomsByStatus: {
+    CLEAN: number;
+    DIRTY: number;
+    INSPECT: number;
+    OOO: number;
+  };
+  occupancy: {
+    occupiedRooms: number;
+    totalRooms: number;
+    percent: number;
+  };
+  perHotel: Array<{ id: number; name: string; address: string | null; rooms: number }>;
+  generatedAt: string;
+};
+
+/* -------------------- Helpers -------------------- */
+function unwrap<T>(p: Promise<{ data: T }>) {
+  return p.then((r) => r.data);
+}
+
+/* -------------------- Hotels API -------------------- */
+const HOTELS_URL = `${API_BASE}/hotels`;
+
+async function listHotels() { return unwrap<HotelDTO[]>(http.get(HOTELS_URL)); }
+async function getHotel(id: number) { return unwrap<HotelDTO>(http.get(`${HOTELS_URL}/${id}`)); }
+async function createHotel(payload: CreateHotelInput) { return unwrap<HotelDTO>(http.post(HOTELS_URL, payload)); }
+async function updateHotel(id: number, payload: UpdateHotelInput) { return unwrap<HotelDTO>(http.put(`${HOTELS_URL}/${id}`, payload)); }
+async function deleteHotel(id: number) { return unwrap<void>(http.delete(`${HOTELS_URL}/${id}`)); }
+async function summaryHotels() { return unwrap<HotelsSummary>(http.get(`${HOTELS_URL}/summary`)); }
+
+/* -------------------- Rooms API -------------------- */
+const ROOMS_URL = `${API_BASE}/rooms`;
+
+/** GET /rooms/meta */
+async function roomsMeta() { return unwrap<RoomsMeta>(http.get(`${ROOMS_URL}/meta`)); }
+
+/** GET /rooms?hotelId= */
+async function listRooms(hotelId?: number) {
+  return unwrap<RoomDTO[]>(http.get(ROOMS_URL, { params: hotelId ? { hotelId } : {} }));
+}
+
+/** GET /rooms/:id (includes images[] and derived amenities[]) */
+async function getRoom(id: number) { return unwrap<RoomDTO>(http.get(`${ROOMS_URL}/${id}`)); }
+
+/** POST /rooms */
+async function createRoom(payload: CreateRoomInput) { return unwrap<RoomDTO>(http.post(ROOMS_URL, payload)); }
+
+/** PUT /rooms/:id */
+async function updateRoom(id: number, payload: UpdateRoomInput) { return unwrap<RoomDTO>(http.put(`${ROOMS_URL}/${id}`, payload)); }
+
+/** PUT /rooms/:id/status */
+async function updateRoomStatus(id: number, status: RoomStatus) {
+  return unwrap<RoomDTO>(http.put(`${ROOMS_URL}/${id}/status`, { status }));
+}
+
+/** DELETE /rooms/:id */
+async function deleteRoom(id: number) { return unwrap<void>(http.delete(`${ROOMS_URL}/${id}`)); }
+
+/* ---- Room Images ---- */
+async function addRoomImages(id: number, urls: string[]) {
+  return unwrap<RoomDTO>(http.post(`${ROOMS_URL}/${id}/images`, { urls }));
+}
+async function removeRoomImage(id: number, imageId: number) {
+  return unwrap<RoomDTO>(http.delete(`${ROOMS_URL}/${id}/images/${imageId}`));
+}
+async function reorderRoomImages(id: number, ids: number[]) {
+  return unwrap<RoomDTO>(http.put(`${ROOMS_URL}/${id}/images/reorder`, { ids }));
+}
+
+/* ---- RoomType ↔ Amenities (via RoomsController) ---- */
+async function getRoomTypeAmenities(typeId: number) {
+  return unwrap<{ amenityIds: number[]; amenities: AmenityDTO[] }>(
+    http.get(`${ROOMS_URL}/types/${typeId}/amenities`)
+  );
+}
+async function setRoomTypeAmenities(typeId: number, amenityIds: number[]) {
+  return unwrap<{ amenityIds: number[]; amenities: AmenityDTO[] }>(
+    http.put(`${ROOMS_URL}/types/${typeId}/amenities`, { amenityIds })
+  );
+}
+
+/* -------------------- Export -------------------- */
+export const hotelsService = {
+  list: listHotels,
+  get: getHotel,
+  create: createHotel,
+  update: updateHotel,
+  remove: deleteHotel,
+  summary: summaryHotels,
+};
+
+export const roomsService = {
+  meta: roomsMeta,
+  list: listRooms,
+  get: getRoom,
+  create: createRoom,
+  update: updateRoom,
+  updateStatus: updateRoomStatus,
+  remove: deleteRoom,
+  addImages: addRoomImages,
+  removeImage: removeRoomImage,
+  reorderImages: reorderRoomImages,
+  getTypeAmenities: getRoomTypeAmenities,
+  setTypeAmenities: setRoomTypeAmenities,
+};
+
+const propertyService = { hotels: hotelsService, rooms: roomsService };
+export default propertyService;
